@@ -16,17 +16,12 @@ const square = () => {
     run();
 };
 
-const turnLeft = () => {
-    console.log('turn left');
-
-    setTimeout(() => {
-        square();
-        setInterval(()=>{port.write('?\r');}, 200);
-    } , 2000);
-};
-
-const turnRight = () => {
-    console.log('turn right');
+const turn = ({value}) => {
+    const gcode =`$J=G21G91X${value}F20`;
+    commands = gcode.split('\n');
+    console.log("Program:");
+    console.log(commands);
+    run();
 };
 
 const connect = (path) => {
@@ -63,25 +58,29 @@ const connect = (path) => {
     });
 };
 
-SerialPort.list().then((list) => {
-    console.log(list);
-    const arduino = list.filter((d) => {
-        return d.manufacturer && (
-            d.manufacturer.match("Arduino") // arduino uno
-            || d.manufacturer.match("FTDI") // arduino nano
-        );
-    });
+const initArduino = (callback) => {
+    SerialPort.list().then((list) => {
+        console.log({list});
+        const arduino = list.filter((d) => {
+            return d.manufacturer && (
+                d.manufacturer.match("Arduino") // arduino uno
+                || d.manufacturer.match("FTDI") // arduino nano
+            );
+        });
 
-    if (arduino.length) {
-        console.log("Conecting to Arduino");
-        console.log(arduino[0]);
-        connect(arduino[0].path);
-    } else {
-        console.log("Arduino not found.");
-    }
-});
+        if (arduino.length) {
+            console.log("Conecting to Arduino");
+            console.log(arduino[0]);
+            callback(arduino[0]);
+            connect(arduino[0].path);
+        } else {
+            console.log("Arduino not found.");
+            callback({error: "Arduino not found"});
+        }
+    });
+}
 
 module.exports = {
-    turnRight,
-    turnLeft
+    initArduino,
+    turn
 };

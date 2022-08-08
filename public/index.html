@@ -1,16 +1,69 @@
 <html>
     <body>
-        <pre id="info"></pre>
-        <button onclick="start();">Start</button>
-        <button onclick="takePhoto();">Take photo</button>
-        <button onclick="turnLeft();">Turn left</button>
-        <button onclick="turnRight();">Turn right</button>
-        <br />
-        <video playsinline autoplay></video>
-        <br />
-        <pre id="img-info"></pre>
-        <br />
-        <img src="" />
+        <style>
+            #camera {
+                display: none;
+            }
+            #computer {
+                display:none;
+            }
+            .hide {
+                display: none;
+            }
+            img {
+                width: 100%;
+            }
+            #img-info {
+                position: absolute;
+                bottom: 0;
+                right: 0;
+                color: white;
+            }
+            #floating {
+                position: absolute;
+                top: 5px;
+                left: 5px;
+                border: thin solid black;
+                background: rgba(255, 255, 255, 0.8);
+                padding: 10px;
+            }
+        </style>
+
+        <div id="computer">
+            <div>
+                <img src=""/>
+                <pre id="img-info"></pre>
+            </div>
+
+            <div id="floating">
+                <div id="info">
+                </div>
+
+                <select id="devices"></select>
+
+                <div class="hide">
+                    <button onclick="startStream();">Start</button>
+                    <button onclick="doTakePhoto();">Take photo</button>
+                    <button onclick="turnLeft();">Turn left</button>
+                    <button onclick="turnRight();">Turn right</button>
+                </div>
+        
+                <div id="controls" class="hide">
+                    Zoom: <input id="zoom" type="range" oninput="zoom()" />
+                    Focus distance: <input id="focusDistance" type="range" oninput="focusDistance()" />
+                    Exposure Time: <input id="exposureTime" type="range" oninput="exposureTime()" />
+                </div>
+            </div>
+        </div>
+
+        <div id="camera">
+            <video
+                playsinline
+                autoplay
+                style="width:100%"
+            ></video>
+        </div>
+
         <script src="index.js"></script>
     </body>
 </html>

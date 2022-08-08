@@ -4,133 +4,364 @@
 
 'use strict';
 
+/*
+  WebRTC
+*/
+
 const videoElement = document.querySelector('video');
 let deviceInfos;
 let videoDevice;
 let imageCapture;
-let wss;
+let mediaStreamTrack;
+let serverDevices;
+
+const applyConstraints = (constraints) => {
+  if (typeof (mediaStreamTrack) === "undefined") {
+    console.log("ERROR: No mediaStreamTrack defined");
+    return;
+  }
+
+  mediaStreamTrack.applyConstraints(constraints)
+    .then(console.log)
+    .catch(console.log);
+};
+
+const doZoom = (value) => {
+  const constraints = {
+    advanced: [{
+      zoom: value
+    }]
+  };
+  applyConstraints(constraints);
+};
+
+const zoom = () => {
+  const el = document.querySelector("#zoom");
+  doZoom(el.value);
+};
+
+const doFocusDistance = (value) => {
+  const constraints = {
+    advanced: [{
+      focusMode: "manual",
+      focusDistance: value
+    }]
+  };
+  applyConstraints(constraints);
+};
+
+const focusDistance = () => {
+  const el = document.querySelector("#focusDistance");
+  doFocusDistance(el.value);
+};
+
+const doExposureTime = (value) => {
+  const constraints = {
+    advanced: [{
+      exposureMode: "manual",
+      exposureTime: value
+    }]
+  };
+  applyConstraints(constraints);
+};
+
+const exposureTime = () => {
+  const el = document.querySelector("#exposureTime");
+  doExposureTime(el.value);
+};
+
+const configureDevicesSelection = () => {
+  for (const [deviceIndex, d] of deviceInfos.entries()) {
+    const { kind, label } = d;
+
+    if (kind === "videoinput") {
+      document.querySelector("#devices").innerHTML += `
+        <option value=${deviceIndex}>${label}</option>`;
+
+      const c = d.getCapabilities();
+      document.querySelector("#info").innerHTML += `
+        <details>
+          <summary>${label} ${c.width.max}x${c.height.max}</summary>
+          <pre>
+${JSON.stringify(c, "", 2)}
+          </pre>
+        </details>`;
+    }
+  }
+};
+
+const getBestDeviceIndex = () => {
+  let bestDeviceIndex;
+  let bestPixels = 0;
+
+  for (const [deviceIndex, d] of deviceInfos.entries()) {
+    const { kind, label } = d;
+    if (kind === "videoinput") {
+      const c = d.getCapabilities();
+      const width = c.width.max;
+      const height = c.height.max;
+      const pixels = width * height;
+      if (pixels > bestPixels) {
+        bestDeviceIndex = deviceIndex;
+        bestPixels = pixels;
+      }
+      console.log(label, c.width.max, c.height.max);
+    }
+  }
+
+  // if it was not possible to select a video device based on pixels
+  // just select the first one.
+  if (!bestDeviceIndex) {
+    bestDeviceIndex = deviceInfos.map((d) => d.kind === "videoinput")[0];
+  }
+
+  return bestDeviceIndex;
+};
+
+const doSelectDevice = (index) => {
+  videoDevice = deviceInfos[index];
+};
+
+const configureStreamControls = () => {
+  const capabilities = mediaStreamTrack.getCapabilities();
+  const settings = mediaStreamTrack.getSettings();
+
+  console.log({capabilities});
+  console.log({settings});
+
+  // set zoom
+  if ("zoom" in settings) {
+    const el = document.querySelector("#zoom");
+    el.value = settings.zoom;
+    el.min = capabilities.zoom.min;
+    el.max = capabilities.zoom.max;
+    el.step = capabilities.zoom.step;
+  }
+
+  // set focus
+  if ("focusDistance" in settings) {
+    const el = document.querySelector("#focusDistance");
+    el.value = settings.focusDistance;
+    el.min = capabilities.focusDistance.min;
+    el.max = capabilities.focusDistance.max;
+    el.step = capabilities.focusDistance.step;
+  }
+
+  // set exposure
+  if ("exposureTime" in settings) {
+    const el = document.querySelector("#exposureTime");
+    el.value = settings.exposureTime;
+    el.min = capabilities.exposureTime.min;
+    el.max = capabilities.exposureTime.max;
+    el.step = capabilities.exposureTime.step;
+  }
+};
 
 const gotDevices = (deviceInfosObject) => {
-    deviceInfos = deviceInfosObject; // a MediaDevices object
+  deviceInfos = deviceInfosObject; // a MediaDevices object
 
-    document.querySelector("#info").innerText = JSON.stringify(deviceInfos, "", 2);
+  // document.querySelector("#info").innerText += JSON.stringify(deviceInfos, "", 2);
 
-    let i = 0;
-    let bestPixels = 0;
-    for(const [,d] of deviceInfos.entries()) {
-        if (d.kind === "videoinput") {
-            const c = d.getCapabilities();
-            document.querySelector("#info").innerText += `
-Video device ${++i}:
-${JSON.stringify(c, "", 2)}
-`;
-            if (c.width && c.height) {
-                const width = c.width.max;
-                const height = c.height.max;
-                const pixels = width*height;
-                if(pixels > bestPixels) {
-                    videoDevice = d;
-                    bestPixels = pixels;
-                }
-            }
-        }
-    }
+  configureDevicesSelection();
 
-    // if it wasn't possible to select a video device based on pixels
-    // just take the first one
-    if (!videoDevice) {
-      videoDevice = deviceInfos.map((d)=>d.kind==="videoinput")[0];
-    }
+  const bestDeviceIndex = getBestDeviceIndex();
+  doSelectDevice(bestDeviceIndex);
 }
 
 const gotStream = (stream) => {
-    window.stream = stream; // a MediaStream object
-    videoElement.srcObject = stream;
+  window.stream = stream; // a MediaStream object
+  videoElement.srcObject = stream;
 
-    const mediaStreamTrack = stream.getVideoTracks()[0]; // a MediaStreamTrack object
-    const capabilities = mediaStreamTrack.getCapabilities();
-    const settings = mediaStreamTrack.getSettings();
-    console.log(capabilities);
-    console.log(settings);
+  mediaStreamTrack = stream.getVideoTracks()[0]; // a MediaStreamTrack object
 
-    // Refresh button list in case labels have become available
-    return navigator.mediaDevices.enumerateDevices();
+  configureStreamControls();
+
+  // Refresh button list in case labels have become available
+  return navigator.mediaDevices.enumerateDevices();
 }
 
 const handleError = (error) => {
   console.log('navigator.MediaDevices.getUserMedia error: ', error.message, error.name);
 }
 
-const start = () => {
+const startStream = () => {
   if (window.stream) {
     window.stream.getTracks().forEach(track => {
       track.stop();
     });
   }
+
+  // const deviceIndex = document.querySelector("#devices").value;
+  // const videoDevice = deviceInfos[deviceIndex];
   const videoSource = videoDevice.deviceId;
   const constraints = {
-    video: {deviceId: videoSource ? {exact: videoSource} : undefined}
+    video: { deviceId: videoSource ? { exact: videoSource } : undefined }
   };
-  navigator.mediaDevices.getUserMedia(constraints).then(gotStream).then(gotDevices).catch(handleError);
+  navigator.mediaDevices.getUserMedia(constraints).then(gotStream).catch(handleError);
 }
+
+const initWebRTC = async () => {
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    gotDevices(devices);
+  } catch(err) {
+    handleError(err);
+  };
+}
+
+/*
+  Websocket
+*/
+
+let wss;
 
 const postMessage = async (blob) => {
   const form = new FormData();
   form.append('image', blob);
 
-  const response = await fetch("https://192.168.1.14:3000", {
+  const response = await fetch("https://darcy.local:3000", {
     method: 'POST',
-    // headers: {
-    //   'Content-Type': 'multipart/form-data', // 'application/json'
-    //   // 'Content-Type': 'application/x-www-form-urlencoded',
-    // },
     body: form
   });
   console.log(await response.json());
 }
 
-const takePhoto = async () => {
-    imageCapture = new ImageCapture(window.stream.getVideoTracks()[0]);
-    let blob;
-    try {
-      blob = await imageCapture.takePhoto();
-      const img = document.querySelector('img');
-      img.src = URL.createObjectURL(blob);
-      img.onload = () => {
-          // URL.revokeObjectURL(this.src);
-          document.querySelector("#img-info").innerText = `${img.width} x ${img.height}`;
-      }
-
-      postMessage(blob);
-    } catch (err) {
-      console.error('takePhoto() error:', error);
+const doTakePhoto = async () => {
+  imageCapture = new ImageCapture(mediaStreamTrack);
+  // imageCapture = new ImageCapture(window.stream.getVideoTracks()[0]);
+  let blob;
+  try {
+    blob = await imageCapture.takePhoto();
+    const img = document.querySelector('img');
+    img.src = URL.createObjectURL(blob);
+    img.onload = () => {
+      // URL.revokeObjectURL(this.src);
+      document.querySelector("#img-info").innerText = `${img.width} x ${img.height}`;
     }
+
+    postMessage(blob);
+  } catch (err) {
+    console.error('takePhoto() error:', error);
+  }
 };
 
 const turnLeft = () => {
-  wss.send("turn-left");
+  sendMessage({type: "turn", value: -0.1});
 };
 
 const turnRight = () => {
-  wss.send("turn-right");
+  sendMessage({type: "turn", value: 0.1});
 };
 
 const receivedWebsocketMessage = (event) => {
-  console.log('Message from server ', event.data);
+  console.log('Message from server:', event.data);
+
+  const msg = JSON.parse(event.data);
+  const innerHTML = document.querySelector('#info').innerHTML;
+
+  if (msg.message) {
+    document.querySelector('#info').innerHTML = `[msg] ${msg.message}<br/>${innerHTML}`;
+  }
+
+  if (msg.error) {
+    document.querySelector('#info').innerHTML = `[msg] ${msg.error}<br/>${innerHTML}`;
+  }
+
+  if (msg.path) {
+    const { path, manufacturer, serialNumber, locationId, vendorId, productId } = msg;
+    document.querySelector('#info').innerHTML = `[msg] Arduino found:
+        path ${path}
+manufacturer ${manufacturer}
+serialNumber ${serialNumber}
+  locationId ${locationId}
+    vendorId ${vendorId}
+   productId ${productId}
+
+${innerHTML}`;
+  }
+
+  if (msg.selectDevice) {
+    doSelectDevice(msg.selectDevice);
+  }
+
+  if (msg.startStream) {
+    startStream();
+  };
+
+  if (msg.zoom) {
+    doZoom(msg.zoom);
+  }
+
+  if (msg.focusDistance) {
+    doFocusDistance(msg.focusDistance);
+  }
+
+  if (msg.exposureTime) {
+    doExposureTime(msg.exposureTime);
+  }
+
+  if (msg.takePhoto) {
+    doTakePhoto();
+  }
+
+  if (msg.devices) {
+    serverDevices = msg.devices;
+  }
 };
 
-const initWebsocket = () => {
-  wss = new WebSocket("wss://localhost:3000");
+const sendMessage = (obj) => {
+  wss.send(JSON.stringify(obj));
+};
 
-  // Connection opened
-  wss.addEventListener('open', () => {
-    wss.send('plijs-client');
+const sendDevices = () => {
+  const myDeviceInfos = JSON.parse(JSON.stringify(deviceInfos));
+
+  // add capabilities
+  for (let i=0; i<deviceInfos.length; i++) {
+    const { kind } = deviceInfos[i];
+
+    if (kind === "videoinput") {
+      myDeviceInfos[i].capabilities = deviceInfos[i].getCapabilities();
+    }
+  }
+  
+  sendMessage({
+    type: "devices",
+    deviceInfos: myDeviceInfos
   });
 
-  // Listen for messages
-  wss.addEventListener('message', receivedWebsocketMessage);
 }
 
-navigator.mediaDevices.enumerateDevices().then(gotDevices).catch(handleError);
+const initWebsocket = () => {
+  const pr = new Promise((resolve, reject) => {
+    wss = new WebSocket("wss://darcy.local:3000");
 
-initWebsocket();
+    // Listen for messages
+    wss.addEventListener('message', receivedWebsocketMessage);  
+
+    // Connection opened
+    wss.addEventListener('open', () => {
+      sendMessage({type: 'plijs-client'});
+      resolve();
+    });
+  });
+
+  return pr;
+}
+
+const main = async () => {
+  await initWebRTC();
+  await initWebsocket();
+
+  sendDevices();
+
+  console.log(deviceInfos);
+
+  if (navigator.userAgent.includes("Mobile")) {
+    document.querySelector("#camera").style.display = "block";
+  } else {
+    document.querySelector("#computer").style.display = "block";
+  }
+}
+
+main();
